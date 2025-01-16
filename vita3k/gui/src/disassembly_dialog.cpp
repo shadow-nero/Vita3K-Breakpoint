@@ -1,30 +1,28 @@
-// Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License along
-// with this program; if not, write to the Free Software Foundation, Inc.,
-// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-
 #include <gui/functions.h>
-
 #include "private.h"
-
 #include <cpu/functions.h>
 #include <kernel/state.h>
-
 #include <fmt/format.h>
+#include <set>
+#include <string>
+#include <vector>
 
 namespace gui {
+
+// Usar um conjunto para armazenar os breakpoints
+static std::set<uint32_t> breakpoints;
+static std::vector<std::string> breakpoint_strings;  // Para armazenar os endereços formatados como string
+
+void add_breakpoint(uint32_t addr) {
+    if (breakpoints.find(addr) == breakpoints.end()) {
+        breakpoints.insert(addr);
+        breakpoint_strings.push_back(fmt::format("0x{:08X}", addr));
+    }
+}
+
+bool check_breakpoint(uint32_t addr) {
+    return breakpoints.find(addr) != breakpoints.end();
+}
 
 static void evaluate_code(GuiState &gui, EmuEnvState &emuenv, uint32_t from, uint32_t count, bool thumb) {
     gui.disassembly.clear();
@@ -38,15 +36,20 @@ static void evaluate_code(GuiState &gui, EmuEnvState &emuenv, uint32_t from, uin
     uint32_t addr = from;
 
     for (std::uint32_t a = 0; a < count && size != 0; a++) {
-        // Apparently some THUMB instructions are 4 bytes long, so check all 4 just to be safe.
-        size_t addr_page = addr / KiB(4);
+        // Verifica se o endereço está no conjunto de breakpoints
+        if (check_breakpoint(addr)) {
+            gui.disassembly.emplace_back(fmt::format("Breakpoint hit at {:08X}", addr));
+            break;
+        }
 
+        // Checa se o endereço é válido
+        size_t addr_page = addr / KiB(4);
         if (addr_page == 0 || !is_valid_addr(emuenv.mem, addr_page * KiB(4))) {
             gui.disassembly.emplace_back(fmt::format("Disassembled {} instructions.", a));
             break;
         }
 
-        // Use DisasmState for first thread.
+        // Desmonta a instrução e mostra na GUI
         std::string disasm = fmt::format("{:0>8X}: {}",
             addr, disassemble(*emuenv.kernel.threads.begin()->second->cpu.get(), addr, thumb, &size));
         gui.disassembly.emplace_back(disasm);
@@ -76,15 +79,19 @@ static const char *archs[] = {
 void draw_disassembly_dialog(GuiState &gui, EmuEnvState &emuenv) {
     ImGui::Begin("Disassembly", &gui.debug_menu.disassembly_dialog);
     ImGui::BeginChild("disasm", ImVec2(0, -(ImGui::GetTextLineHeightWithSpacing() + 10)));
+
+    // Exibe as instruções de desassemblagem
     for (const std::string &assembly : gui.disassembly) {
         ImGui::Text("%s", assembly.c_str());
     }
+
     ImGui::EndChild();
 
     ImGui::Separator();
 
     ImGui::BeginChild("disasm_info", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() + 10));
 
+    // Caixa de texto para entrada do endereço de início
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4);
     ImGui::Text("Address");
     ImGui::SameLine();
@@ -97,6 +104,7 @@ void draw_disassembly_dialog(GuiState &gui, EmuEnvState &emuenv) {
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
+    // Caixa de texto para a contagem de instruções
     ImGui::Text("Count");
     ImGui::SameLine();
     ImGui::PushItemWidth(10 * 4);
@@ -107,6 +115,7 @@ void draw_disassembly_dialog(GuiState &gui, EmuEnvState &emuenv) {
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
+    // Seletor de arquitetura (ARM ou THUMB)
     ImGui::Text("Arch");
     ImGui::SameLine();
     if (ImGui::BeginCombo("##disasm_arch", gui.disassembly_arch.c_str())) {
@@ -121,6 +130,27 @@ void draw_disassembly_dialog(GuiState &gui, EmuEnvState &emuenv) {
             }
         }
         ImGui::EndCombo();
+    }
+
+    ImGui::Separator();
+
+    // Campo para adicionar um novo breakpoint
+    ImGui::Text("Add Breakpoint");
+    ImGui::SameLine();
+    ImGui::PushItemWidth(10 * 8);
+    if (ImGui::InputText("##breakpoint_addr", gui.breakpoint_address, 9, ImGuiInputTextFlags_CharsHexadecimal)) {
+        // Se o usuário pressionar Enter, adiciona o breakpoint
+        uint32_t addr = static_cast<uint32_t>(std::stol(gui.breakpoint_address, nullptr, 16));
+        add_breakpoint(addr);
+    }
+    ImGui::PopItemWidth();
+
+    ImGui::Separator();
+
+    // Exibe a lista de breakpoints
+    ImGui::Text("Breakpoints:");
+    for (const std::string &bp : breakpoint_strings) {
+        ImGui::BulletText("%s", bp.c_str());
     }
 
     ImGui::EndChild();
