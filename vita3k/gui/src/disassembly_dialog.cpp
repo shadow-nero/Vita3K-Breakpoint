@@ -136,14 +136,14 @@ void draw_disassembly_dialog(GuiState &gui, EmuEnvState &emuenv) {
 
     // Campo para adicionar um novo breakpoint
     ImGui::Text("Add Breakpoint");
-    ImGui::SameLine();
-    ImGui::PushItemWidth(10 * 8);
-    if (ImGui::InputText("##breakpoint_addr", gui.breakpoint_address, 9, ImGuiInputTextFlags_CharsHexadecimal)) {
-        // Se o usuário pressionar Enter, adiciona o breakpoint
-        uint32_t addr = static_cast<uint32_t>(std::stol(gui.breakpoint_address, nullptr, 16));
-        add_breakpoint(addr);
-    }
-    ImGui::PopItemWidth();
+ImGui::SameLine();
+ImGui::PushItemWidth(10 * 8);
+if (ImGui::InputText("##breakpoint_addr", gui.breakpoint_address, 9, ImGuiInputTextFlags_CharsHexadecimal)) {
+    // Se o usuário pressionar Enter, adiciona o breakpoint
+    uint32_t addr = static_cast<uint32_t>(std::stol(gui.breakpoint_address, nullptr, 16));
+    add_breakpoint(addr);
+}
+ImGui::PopItemWidth();
 
     ImGui::Separator();
 
